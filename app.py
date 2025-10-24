@@ -48,6 +48,21 @@ def api_get(endpoint, headers=None):
     except Exception as e:
         st.error(str(e))
 
+from streamlit_geolocation import streamlit_geolocation
+
+def get_user_location():
+    """Capture user's current location safely via streamlit-geolocation"""
+    st.write("📍 Click the button below to share your current location.")
+    location = streamlit_geolocation()
+
+    if location and isinstance(location, dict) and "latitude" in location and "longitude" in location:
+        lat, lon = location["latitude"], location["longitude"]
+        st.success(f"✅ Location captured: ({lat:.5f}, {lon:.5f})")
+        return lat, lon
+    else:
+        st.info("Please click the location button above and allow permission.")
+        return None
+    
 # ------------------------------------------------------------
 # NAVIGATION
 # ------------------------------------------------------------
@@ -182,21 +197,6 @@ if page == "HR Dashboard":
 # ------------------------------------------------------------
 # EMPLOYEE DASHBOARD (Final, clean version using streamlit-geolocation)
 # ------------------------------------------------------------
-from streamlit_geolocation import streamlit_geolocation
-
-def get_user_location():
-    """Capture user's current location safely via streamlit-geolocation"""
-    st.write("📍 Click the button below to share your current location.")
-    location = streamlit_geolocation()
-
-    if location and isinstance(location, dict) and "latitude" in location and "longitude" in location:
-        lat, lon = location["latitude"], location["longitude"]
-        st.success(f"✅ Location captured: ({lat:.5f}, {lon:.5f})")
-        return lat, lon
-    else:
-        st.info("Please click the location button above and allow permission.")
-        return None
-
 
 elif page == "Employee Dashboard":
     st.title("👷 Employee Dashboard")
