@@ -184,7 +184,7 @@ if page == "HR Dashboard":
                 st.info("No attendance found for this range.")
 
 
-        # ---------- EXPORT ATTENDANCE (Fully Working Excel Download) ----------
+       # ---------- EXPORT ATTENDANCE (Final, Backend-Accurate) ----------
         st.subheader("📥 Download Attendance (Excel)")
         start_export = st.date_input("Export Start Date", value=date.today(), key="exp_start")
         end_export = st.date_input("Export End Date", value=date.today(), key="exp_end")
@@ -195,24 +195,25 @@ if page == "HR Dashboard":
             from openpyxl import Workbook
             from openpyxl.styles import Alignment, Font
 
-            # --- Step 1: Read CSV safely ---
+            # Step 1: Read backend CSV exactly as-is
             df = pd.read_csv(StringIO(data_text))
-            df.columns = [c.strip().lower() for c in df.columns]
 
-            # --- Step 2: Convert UTC to IST ---
+            # Step 2: Normalize columns (keep them readable)
+            df.columns = [c.strip() for c in df.columns]
+
+            # Step 3: Convert UTC → IST for Check-In & Check-Out
             for col in df.columns:
-                if "time" in col and df[col].notna().any():
+                if "Check-In" in col or "Check-Out" in col:
                     df[col] = df[col].apply(lambda x: convert_utc_to_ist(str(x)) if isinstance(x, str) else x)
 
-            # --- Step 3: Order columns dynamically ---
+            # Step 4: Reorder to match backend’s logical structure
             preferred_order = [
-                "id", "employee_id", "company_id",
-                "date", "checkin_time", "checkout_time",
-                "status", "total_hours"
+                "Employee Name", "Email", "Date",
+                "Check-In", "Check-Out", "Total Hours", "Status"
             ]
-            df = df[[col for col in preferred_order if col in df.columns]]
+            df = df[[c for c in preferred_order if c in df.columns]]
 
-            # --- Step 4: Write clean Excel ---
+            # Step 5: Build Excel file
             buffer = BytesIO()
             with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
                 df.to_excel(writer, index=False, sheet_name="Attendance")
@@ -223,7 +224,7 @@ if page == "HR Dashboard":
                     cell.font = Font(bold=True)
                     cell.alignment = Alignment(horizontal="center")
 
-                # Auto column widths
+                # Auto column width
                 for column_cells in sheet.columns:
                     length = max(len(str(cell.value)) for cell in column_cells)
                     sheet.column_dimensions[column_cells[0].column_letter].width = length + 3
@@ -231,7 +232,7 @@ if page == "HR Dashboard":
             buffer.seek(0)
             return buffer.getvalue()
 
-        # 🧩 Step 5: Fetch once, persist, then allow download
+
         if st.button("Fetch Attendance for Export"):
             url = f"{BACKEND_URL}/export/attendance?start_date={start_export}&end_date={end_export}"
             r = requests.get(url, headers=get_headers("hr"))
@@ -250,6 +251,7 @@ if page == "HR Dashboard":
                     file_name=f"attendance_{date.today()}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+
 
 
 
