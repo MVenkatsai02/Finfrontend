@@ -62,7 +62,18 @@ def get_user_location():
     else:
         st.info("Please click the location button above and allow permission.")
         return None
-    
+
+from datetime import datetime, timedelta, timezone
+
+def convert_utc_to_ist(utc_str):
+    """Convert UTC timestamp string to IST (UTC+5:30)."""
+    try:
+        utc_time = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+        ist_time = utc_time + timedelta(hours=5, minutes=30)
+        return ist_time.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return utc_str  # fallback if parsing fails
+
 # ------------------------------------------------------------
 # NAVIGATION
 # ------------------------------------------------------------
