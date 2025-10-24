@@ -184,67 +184,47 @@ if page == "HR Dashboard":
                 st.info("No attendance found for this range.")
 
 
-        # ---------- EXPORT ATTENDANCE (Fixed and Clean Excel) ----------
+        # ---------- EXPORT ATTENDANCE (Robust CSV to Excel Conversion) ----------
         st.subheader("📥 Download Attendance (Excel)")
         start_export = st.date_input("Export Start Date", value=date.today(), key="exp_start")
         end_export = st.date_input("Export End Date", value=date.today(), key="exp_end")
 
-        def build_excel_clean(data_text: str) -> bytes:
+        def build_excel_from_csv(data_text: str) -> bytes:
+            from io import BytesIO, StringIO
             from openpyxl import Workbook
-            from openpyxl.utils.dataframe import dataframe_to_rows
-            from openpyxl.styles import Alignment
-            from io import BytesIO
+            import pandas as pd
 
-            # Try to parse CSV or JSON gracefully
             try:
+                # --- Step 1: Read CSV safely regardless of header order ---
                 df = pd.read_csv(StringIO(data_text))
-            except Exception:
-                try:
-                    df = pd.DataFrame(eval(data_text))
-                except Exception:
-                    st.error("❌ Failed to parse export data properly.")
-                    return None
 
-            # Clean column names
-            df.columns = [c.strip().lower() for c in df.columns]
+                # --- Step 2: Normalize column names (lowercase + strip spaces) ---
+                df.columns = [c.strip().lower() for c in df.columns]
 
-            # Convert any time fields to IST
-            for col in df.columns:
-                if "time" in col and df[col].notna().any():
-                    df[col] = df[col].apply(lambda x: convert_utc_to_ist(str(x)) if isinstance(x, str) else x)
+                # --- Step 3: Convert UTC times to IST ---
+                for col in df.columns:
+                    if "time" in col and df[col].notna().any():
+                        df[col] = df[col].apply(lambda x: convert_utc_to_ist(str(x)) if isinstance(x, str) else x)
 
-            # Define preferred column order
-            preferred_order = [
-                "id", "employee_id", "company_id",
-                "date", "checkin_time", "checkout_time",
-                "status", "total_hours"
-            ]
-            df = df[[c for c in preferred_order if c in df.columns]]
+                # --- Step 4: Define flexible preferred order ---
+                preferred_order = [
+                    "id", "date", "employee_id", "company_id",
+                    "checkin_time", "checkout_time", "status", "total_hours"
+                ]
+                # Reorder dynamically, keeping all available columns
+                ordered_cols = [col for col in preferred_order if col in df.columns]
+                df = df[ordered_cols]
 
-            # Create Excel workbook manually for clean output
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Attendance"
+                # --- Step 5: Write to Excel ---
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+                    df.to_excel(writer, index=False, sheet_name="Attendance")
+                buffer.seek(0)
+                return buffer.getvalue()
 
-            # Write header
-            for c_idx, col_name in enumerate(df.columns, start=1):
-                cell = ws.cell(row=1, column=c_idx, value=col_name.capitalize())
-                cell.alignment = Alignment(horizontal="center", vertical="center")
-
-            # Write data
-            for row in dataframe_to_rows(df, index=False, header=False):
-                ws.append(row)
-
-            # Set column widths
-            for column_cells in ws.columns:
-                length = max(len(str(cell.value)) for cell in column_cells)
-                ws.column_dimensions[column_cells[0].column_letter].width = length + 3
-
-            # Save to memory
-            stream = BytesIO()
-            wb.save(stream)
-            stream.seek(0)
-            return stream.getvalue()
+            except Exception as e:
+                st.error(f"❌ Failed to process export: {e}")
+                return None
 
 
         if st.button("Download Excel"):
@@ -252,11 +232,11 @@ if page == "HR Dashboard":
                 url = f"{BACKEND_URL}/export/attendance?start_date={start_export}&end_date={end_export}"
                 r = requests.get(url, headers=get_headers("hr"))
                 if r.status_code == 200:
-                    excel_bytes = build_excel_clean(r.text)
-                    if excel_bytes:
+                    excel_data = build_excel_from_csv(r.text)
+                    if excel_data:
                         st.download_button(
                             "⬇️ Download Excel",
-                            data=excel_bytes,
+                            data=excel_data,
                             file_name=f"attendance_{date.today()}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
@@ -264,6 +244,7 @@ if page == "HR Dashboard":
                     st.error(f"Error {r.status_code}: {r.text}")
             except Exception as e:
                 st.error(f"Export failed: {e}")
+
 
 
         # ---------- QR MANAGEMENT ----------
