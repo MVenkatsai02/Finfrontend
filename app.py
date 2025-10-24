@@ -181,16 +181,20 @@ if page == "HR Dashboard":
 
 
 # ------------------------------------------------------------
-# EMPLOYEE DASHBOARD
+# EMPLOYEE DASHBOARD (with automatic GPS location capture)
 # ------------------------------------------------------------
 elif page == "Employee Dashboard":
+    import streamlit.components.v1 as components
+
     st.title("👷 Employee Dashboard")
 
+    # Get QR token from URL query parameters
     qr_token = st.query_params.get("token") if hasattr(st, "query_params") else None
     if not qr_token:
         st.error("⚠️ Please scan the QR code to open this page.")
         st.stop()
 
+    # ---------- EMPLOYEE LOGIN ----------
     if "employee_token" not in st.session_state:
         st.subheader("Login")
         email = st.text_input("Email")
@@ -202,40 +206,112 @@ elif page == "Employee Dashboard":
                 st.session_state.employee_token = res["access_token"]
                 st.success("✅ Logged in successfully!")
                 st.rerun()
+            else:
+                st.error("❌ Invalid credentials or login failed.")
     else:
         st.success("Employee logged in ✅")
 
+        # ---------- LOCATION SHARING ----------
+        st.subheader("📍 Share Your Location Automatically")
+
+        # Display current location info
+        if "location" not in st.session_state:
+            st.session_state.location = None
+
+        location_placeholder = st.empty()
+
+        get_location_button = st.button("📍 Get Current Location")
+
+        if get_location_button:
+            get_location_js = """
+            <script>
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const lat = position.coords.latitude.toFixed(6);
+                    const lon = position.coords.longitude.toFixed(6);
+                    const loc = lat + "," + lon;
+                    window.parent.postMessage({type: 'location', text: loc}, '*');
+                },
+                (error) => {
+                    window.parent.postMessage({type: 'location_error', text: error.message}, '*');
+                }
+            );
+            </script>
+            """
+            components.html(get_location_js, height=0)
+
+        # Listen for JS messages
+        components.html(
+            """
+            <script>
+            window.addEventListener('message', (event) => {
+                if (event.data.type === 'location') {
+                    const loc = event.data.text;
+                    const streamlitInput = window.parent.document.querySelector('iframe[srcdoc*="streamlit"]');
+                    if (streamlitInput) {
+                        window.parent.postMessage({isStreamlitMessage: true, type: 'streamlit:setSessionState', key: 'location', value: loc}, '*');
+                    }
+                }
+            });
+            </script>
+            """,
+            height=0,
+        )
+
+        # Show location if already fetched
+        if st.session_state.location:
+            try:
+                lat, lon = map(float, st.session_state.location.split(","))
+                st.success(f"✅ Location shared! Latitude: {lat}, Longitude: {lon}")
+            except Exception:
+                st.error("⚠️ Error parsing location data.")
+        else:
+            st.info("Click '📍 Get Current Location' to share your GPS coordinates.")
+
+        # ---------- ATTENDANCE ACTIONS ----------
         st.subheader("🕒 Attendance Actions")
-        lat = st.number_input("Your Latitude", format="%.5f")
-        lon = st.number_input("Your Longitude", format="%.5f")
 
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Check In"):
-                api_post("/attendance/checkin",
-                         {"token": qr_token, "latitude": lat, "longitude": lon},
-                         headers=get_headers("employee"))
+                if not st.session_state.location:
+                    st.warning("⚠️ Please share your location first.")
+                else:
+                    lat, lon = map(float, st.session_state.location.split(","))
+                    api_post(
+                        "/attendance/checkin",
+                        {"token": qr_token, "latitude": lat, "longitude": lon},
+                        headers=get_headers("employee"),
+                    )
+
         with col2:
             if st.button("Check Out"):
-                api_post("/attendance/checkout",
-                         {"token": qr_token, "latitude": lat, "longitude": lon},
-                         headers=get_headers("employee"))
+                if not st.session_state.location:
+                    st.warning("⚠️ Please share your location first.")
+                else:
+                    lat, lon = map(float, st.session_state.location.split(","))
+                    api_post(
+                        "/attendance/checkout",
+                        {"token": qr_token, "latitude": lat, "longitude": lon},
+                        headers=get_headers("employee"),
+                    )
 
         # ---------- VIEW MY ATTENDANCE ----------
         st.subheader("📊 View My Attendance")
         start = st.date_input("Start Date", value=date.today(), key="emp_start")
         end = st.date_input("End Date", value=date.today(), key="emp_end")
         if st.button("Get My Attendance"):
-            res = api_get(f"/attendance/my?start_date={start}&end_date={end}",
-                          headers=get_headers("employee"))
+            res = api_get(f"/attendance/my?start_date={start}&end_date={end}", headers=get_headers("employee"))
             if res:
                 st.dataframe(pd.DataFrame(res))
             else:
                 st.info("No records found.")
 
+        # ---------- LOGOUT ----------
         if st.button("Logout Employee"):
             del st.session_state["employee_token"]
             st.rerun()
+
 
 
 # ------------------------------------------------------------
