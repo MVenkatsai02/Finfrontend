@@ -179,9 +179,8 @@ if page == "HR Dashboard":
             del st.session_state["hr_token"]
             st.rerun()
 
-
 # ------------------------------------------------------------
-# EMPLOYEE DASHBOARD (Fully working auto GPS version)
+# EMPLOYEE DASHBOARD (Final GPS Fix - works on all browsers)
 # ------------------------------------------------------------
 elif page == "Employee Dashboard":
     import streamlit.components.v1 as components
@@ -211,70 +210,80 @@ elif page == "Employee Dashboard":
     else:
         st.success("Employee logged in ✅")
 
-        # ---------- LOCATION SHARING ----------
-        st.subheader("📍 Share Your Location")
+        # ---------- LOCATION CAPTURE ----------
+        st.subheader("📍 Share Your Location Automatically")
 
         # Initialize state
         if "lat" not in st.session_state:
             st.session_state.lat = None
             st.session_state.lon = None
 
-        # HTML/JS to request location and send it back to Streamlit
-        location_html = """
-        <script>
-        function getLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(showPosition, showError);
-            } else {
-                document.getElementById("location").innerHTML = "Geolocation not supported by this browser.";
-            }
-        }
+        # Button to get GPS location
+        if st.button("📍 Get Current Location"):
+            components.html(
+                """
+                <script>
+                const sendLocation = () => {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(
+                            (pos) => {
+                                const lat = pos.coords.latitude.toFixed(6);
+                                const lon = pos.coords.longitude.toFixed(6);
+                                const data = {lat: lat, lon: lon};
+                                const streamlitMsg = {
+                                    isStreamlitMessage: true,
+                                    type: "streamlit:setComponentValue",
+                                    value: data
+                                };
+                                window.parent.postMessage(streamlitMsg, "*");
+                            },
+                            (err) => {
+                                alert("Error getting location: " + err.message);
+                            }
+                        );
+                    } else {
+                        alert("Geolocation not supported in this browser.");
+                    }
+                };
+                sendLocation();
+                </script>
+                """,
+                height=0,
+            )
+            st.info("📡 Requesting GPS permission... Please allow location access.")
 
-        function showPosition(position) {
-            const lat = position.coords.latitude.toFixed(6);
-            const lon = position.coords.longitude.toFixed(6);
-            const params = new URLSearchParams(window.location.search);
-            params.set("lat", lat);
-            params.set("lon", lon);
-            window.location.search = params.toString();
-        }
+        # Small hidden listener (this auto-updates Streamlit state)
+        components.html(
+            """
+            <script>
+            window.addEventListener("message", (event) => {
+                if (event.data && event.data.value) {
+                    const coords = event.data.value;
+                    window.parent.postMessage({
+                        isStreamlitMessage: true,
+                        type: "streamlit:setSessionState",
+                        key: "lat",
+                        value: coords.lat
+                    }, "*");
+                    window.parent.postMessage({
+                        isStreamlitMessage: true,
+                        type: "streamlit:setSessionState",
+                        key: "lon",
+                        value: coords.lon
+                    }, "*");
+                }
+            });
+            </script>
+            """,
+            height=0,
+        )
 
-        function showError(error) {
-            let msg = "";
-            switch(error.code) {
-                case error.PERMISSION_DENIED:
-                    msg = "User denied the request for Geolocation."
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                    msg = "Location information is unavailable."
-                    break;
-                case error.TIMEOUT:
-                    msg = "The request to get user location timed out."
-                    break;
-                default:
-                    msg = "An unknown error occurred."
-                    break;
-            }
-            document.getElementById("location").innerHTML = msg;
-        }
-        </script>
-        <button onclick="getLocation()">📍 Share Current Location</button>
-        <p id="location"></p>
-        """
-
-        # Render the button
-        components.html(location_html, height=100)
-
-        # Read location from query params
-        lat = st.query_params.get("lat")
-        lon = st.query_params.get("lon")
-
+        # Display live coordinates
+        lat, lon = st.session_state.get("lat"), st.session_state.get("lon")
         if lat and lon:
-            st.session_state.lat = lat
-            st.session_state.lon = lon
-            st.success(f"✅ Location shared! Latitude: {lat}, Longitude: {lon}")
+            st.success(f"✅ Location shared successfully! Latitude: {lat}, Longitude: {lon}")
         else:
-            st.info("Click '📍 Share Current Location' and allow GPS access.")
+            st.info("Click '📍 Get Current Location' and allow GPS permission.")
 
         # ---------- ATTENDANCE ACTIONS ----------
         st.subheader("🕒 Attendance Actions")
