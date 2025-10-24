@@ -63,16 +63,19 @@ def get_user_location():
         st.info("Please click the location button above and allow permission.")
         return None
 
-from datetime import datetime, timedelta, timezone
+
+from datetime import datetime, timedelta
 
 def convert_utc_to_ist(utc_str):
     """Convert UTC timestamp string to IST (UTC+5:30)."""
     try:
-        utc_time = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+        utc_str = utc_str.replace("Z", "+00:00")
+        utc_time = datetime.fromisoformat(utc_str)
         ist_time = utc_time + timedelta(hours=5, minutes=30)
         return ist_time.strftime("%Y-%m-%d %H:%M:%S")
     except Exception:
-        return utc_str  # fallback if parsing fails
+        return utc_str
+
 
 # ------------------------------------------------------------
 # NAVIGATION
@@ -166,13 +169,20 @@ if page == "HR Dashboard":
         st.subheader("📊 Company Attendance")
         start = st.date_input("Start Date", value=date.today())
         end = st.date_input("End Date", value=date.today())
+ 
         if st.button("Fetch Attendance"):
             res = api_get(f"/attendance/company?start_date={start}&end_date={end}",
                           headers=get_headers("hr"))
             if res:
+                # 🔁 Convert all UTC timestamps to IST
+                for record in res:
+                    for key in record.keys():
+                        if "time" in key.lower() and record[key]:
+                            record[key] = convert_utc_to_ist(record[key])
                 st.dataframe(pd.DataFrame(res))
             else:
                 st.info("No attendance found for this range.")
+
 
         # ---------- EXPORT ATTENDANCE ----------
         st.subheader("📥 Download Attendance (Excel)")
@@ -281,12 +291,21 @@ elif page == "Employee Dashboard":
         st.subheader("📊 View My Attendance")
         start = st.date_input("Start Date", value=date.today(), key="emp_start")
         end = st.date_input("End Date", value=date.today(), key="emp_end")
+        
+
         if st.button("Get My Attendance"):
-            res = api_get(f"/attendance/my?start_date={start}&end_date={end}", headers=get_headers("employee"))
+            res = api_get(f"/attendance/my?start_date={start}&end_date={end}",
+                  headers=get_headers("employee"))
             if res:
+                # 🔁 Convert UTC → IST
+                for record in res:
+                    for key in record.keys():
+                        if "time" in key.lower() and record[key]:
+                            record[key] = convert_utc_to_ist(record[key])
                 st.dataframe(pd.DataFrame(res))
             else:
                 st.info("No records found.")
+
 
         # ---------- LOGOUT ----------
         if st.button("Logout Employee"):
