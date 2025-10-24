@@ -181,7 +181,7 @@ if page == "HR Dashboard":
 
 
 # ------------------------------------------------------------
-# EMPLOYEE DASHBOARD (Auto GPS fixed version)
+# EMPLOYEE DASHBOARD (Fully working auto GPS version)
 # ------------------------------------------------------------
 elif page == "Employee Dashboard":
     import streamlit.components.v1 as components
@@ -212,48 +212,69 @@ elif page == "Employee Dashboard":
         st.success("Employee logged in ✅")
 
         # ---------- LOCATION SHARING ----------
-        st.subheader("📍 Share Your Location Automatically")
+        st.subheader("📍 Share Your Location")
 
+        # Initialize state
         if "lat" not in st.session_state:
             st.session_state.lat = None
             st.session_state.lon = None
 
-        # Inject JavaScript that communicates directly with Streamlit
+        # HTML/JS to request location and send it back to Streamlit
         location_html = """
         <script>
-        const sendLocation = () => {
-            navigator.geolocation.getCurrentPosition(
-                (position) => {
-                    const lat = position.coords.latitude.toFixed(6);
-                    const lon = position.coords.longitude.toFixed(6);
-                    const data = {lat: lat, lon: lon};
-                    const streamlitEvent = new Event("streamlit:setComponentValue");
-                    streamlitEvent.data = data;
-                    window.parent.document.dispatchEvent(streamlitEvent);
-                },
-                (error) => {
-                    alert("Error getting location: " + error.message);
-                }
-            );
-        };
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+            } else {
+                document.getElementById("location").innerHTML = "Geolocation not supported by this browser.";
+            }
+        }
+
+        function showPosition(position) {
+            const lat = position.coords.latitude.toFixed(6);
+            const lon = position.coords.longitude.toFixed(6);
+            const params = new URLSearchParams(window.location.search);
+            params.set("lat", lat);
+            params.set("lon", lon);
+            window.location.search = params.toString();
+        }
+
+        function showError(error) {
+            let msg = "";
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    msg = "User denied the request for Geolocation."
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    msg = "Location information is unavailable."
+                    break;
+                case error.TIMEOUT:
+                    msg = "The request to get user location timed out."
+                    break;
+                default:
+                    msg = "An unknown error occurred."
+                    break;
+            }
+            document.getElementById("location").innerHTML = msg;
+        }
         </script>
+        <button onclick="getLocation()">📍 Share Current Location</button>
+        <p id="location"></p>
         """
 
-        components.html(location_html, height=0)
+        # Render the button
+        components.html(location_html, height=100)
 
-        # Streamlit button that triggers the JS location capture
-        if st.button("📍 Get Current Location"):
-            components.html("<script>sendLocation();</script>", height=0)
-            st.info("📡 Waiting for GPS permission... Please allow it on your browser.")
-
-        # Display stored coordinates
-        lat = st.session_state.get("lat")
-        lon = st.session_state.get("lon")
+        # Read location from query params
+        lat = st.query_params.get("lat")
+        lon = st.query_params.get("lon")
 
         if lat and lon:
+            st.session_state.lat = lat
+            st.session_state.lon = lon
             st.success(f"✅ Location shared! Latitude: {lat}, Longitude: {lon}")
         else:
-            st.info("Click '📍 Get Current Location' to share your GPS coordinates.")
+            st.info("Click '📍 Share Current Location' and allow GPS access.")
 
         # ---------- ATTENDANCE ACTIONS ----------
         st.subheader("🕒 Attendance Actions")
@@ -261,7 +282,7 @@ elif page == "Employee Dashboard":
         col1, col2 = st.columns(2)
         with col1:
             if st.button("Check In"):
-                if not (st.session_state.get("lat") and st.session_state.get("lon")):
+                if not (st.session_state.lat and st.session_state.lon):
                     st.warning("⚠️ Please share your location first.")
                 else:
                     api_post(
@@ -276,7 +297,7 @@ elif page == "Employee Dashboard":
 
         with col2:
             if st.button("Check Out"):
-                if not (st.session_state.get("lat") and st.session_state.get("lon")):
+                if not (st.session_state.lat and st.session_state.lon):
                     st.warning("⚠️ Please share your location first.")
                 else:
                     api_post(
@@ -304,7 +325,6 @@ elif page == "Employee Dashboard":
         if st.button("Logout Employee"):
             del st.session_state["employee_token"]
             st.rerun()
-
 
 
 # ------------------------------------------------------------
