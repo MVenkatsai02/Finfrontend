@@ -180,11 +180,25 @@ if page == "HR Dashboard":
             st.rerun()
 
 # ------------------------------------------------------------
-# EMPLOYEE DASHBOARD (Final GPS Fix - works on all browsers)
+# EMPLOYEE DASHBOARD (Final, clean version using streamlit-geolocation)
 # ------------------------------------------------------------
-elif page == "Employee Dashboard":
-    import streamlit.components.v1 as components
+from streamlit_geolocation import streamlit_geolocation
 
+def get_user_location():
+    """Capture user's current location safely via streamlit-geolocation"""
+    st.write("📍 Click the button below to share your current location.")
+    location = streamlit_geolocation()
+
+    if location and isinstance(location, dict) and "latitude" in location and "longitude" in location:
+        lat, lon = location["latitude"], location["longitude"]
+        st.success(f"✅ Location captured: ({lat:.5f}, {lon:.5f})")
+        return lat, lon
+    else:
+        st.info("Please click the location button above and allow permission.")
+        return None
+
+
+elif page == "Employee Dashboard":
     st.title("👷 Employee Dashboard")
 
     # Get QR token from URL query parameters
@@ -212,78 +226,11 @@ elif page == "Employee Dashboard":
 
         # ---------- LOCATION CAPTURE ----------
         st.subheader("📍 Share Your Location Automatically")
-
-        # Initialize state
-        if "lat" not in st.session_state:
-            st.session_state.lat = None
-            st.session_state.lon = None
-
-        # Button to get GPS location
-        if st.button("📍 Get Current Location"):
-            components.html(
-                """
-                <script>
-                const sendLocation = () => {
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(
-                            (pos) => {
-                                const lat = pos.coords.latitude.toFixed(6);
-                                const lon = pos.coords.longitude.toFixed(6);
-                                const data = {lat: lat, lon: lon};
-                                const streamlitMsg = {
-                                    isStreamlitMessage: true,
-                                    type: "streamlit:setComponentValue",
-                                    value: data
-                                };
-                                window.parent.postMessage(streamlitMsg, "*");
-                            },
-                            (err) => {
-                                alert("Error getting location: " + err.message);
-                            }
-                        );
-                    } else {
-                        alert("Geolocation not supported in this browser.");
-                    }
-                };
-                sendLocation();
-                </script>
-                """,
-                height=0,
-            )
-            st.info("📡 Requesting GPS permission... Please allow location access.")
-
-        # Small hidden listener (this auto-updates Streamlit state)
-        components.html(
-            """
-            <script>
-            window.addEventListener("message", (event) => {
-                if (event.data && event.data.value) {
-                    const coords = event.data.value;
-                    window.parent.postMessage({
-                        isStreamlitMessage: true,
-                        type: "streamlit:setSessionState",
-                        key: "lat",
-                        value: coords.lat
-                    }, "*");
-                    window.parent.postMessage({
-                        isStreamlitMessage: true,
-                        type: "streamlit:setSessionState",
-                        key: "lon",
-                        value: coords.lon
-                    }, "*");
-                }
-            });
-            </script>
-            """,
-            height=0,
-        )
-
-        # Display live coordinates
-        lat, lon = st.session_state.get("lat"), st.session_state.get("lon")
-        if lat and lon:
-            st.success(f"✅ Location shared successfully! Latitude: {lat}, Longitude: {lon}")
+        coords = get_user_location()
+        if coords:
+            st.session_state.lat, st.session_state.lon = coords
         else:
-            st.info("Click '📍 Get Current Location' and allow GPS permission.")
+            st.session_state.lat, st.session_state.lon = None, None
 
         # ---------- ATTENDANCE ACTIONS ----------
         st.subheader("🕒 Attendance Actions")
